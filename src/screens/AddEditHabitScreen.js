@@ -12,6 +12,7 @@ import { useTheme } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { getHabits, saveHabits } from '../utils/storage';
 import { generateId } from '../utils/habits';
+import { usePro } from '../contexts/ProContext';
 
 const PRESET_COLORS = [
   '#6C63FF',
@@ -28,6 +29,7 @@ const PRESET_COLORS = [
 
 export default function AddEditHabitScreen({ navigation, route }) {
   const { colors, dark } = useTheme();
+  const { canAddHabit } = usePro();
   const existing = route.params?.habit ?? null;
   const isEdit = !!existing;
 
@@ -45,6 +47,12 @@ export default function AddEditHabitScreen({ navigation, route }) {
 
     setSaving(true);
     const habits = await getHabits();
+
+    if (!isEdit && !canAddHabit(habits.length)) {
+      Alert.alert('Limit reached', 'Upgrade to Pro to add more than 3 habits.');
+      setSaving(false);
+      return;
+    }
 
     if (isEdit) {
       const idx = habits.findIndex((h) => h.id === existing.id);

@@ -18,13 +18,17 @@ import {
   isCheckedToday,
 } from '../utils/habits';
 import HeatmapGrid from '../components/HeatmapGrid';
+import PaywallModal from '../components/PaywallModal';
+import { usePro } from '../contexts/ProContext';
 
 export default function HomeScreen() {
   const { colors, dark } = useTheme();
   const navigation = useNavigation();
+  const { canAddHabit } = usePro();
   const [habits, setHabits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedHabitId, setSelectedHabitId] = useState(null); // null = global view
+  const [paywallVisible, setPaywallVisible] = useState(false);
 
   // Reload habits every time the screen is focused
   useFocusEffect(
@@ -91,7 +95,13 @@ export default function HomeScreen() {
                 PixelHabit
               </Text>
               <TouchableOpacity
-                onPress={() => navigation.navigate('AddEditHabit')}
+                onPress={() => {
+                  if (canAddHabit(habits.length)) {
+                    navigation.navigate('AddEditHabit');
+                  } else {
+                    setPaywallVisible(true);
+                  }
+                }}
                 style={[styles.addButton, { backgroundColor: colors.primary }]}
               >
                 <Ionicons name="add" size={24} color="#FFFFFF" />
@@ -182,6 +192,10 @@ export default function HomeScreen() {
         }
       />
 
+      <PaywallModal
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+      />
     </View>
   );
 }
