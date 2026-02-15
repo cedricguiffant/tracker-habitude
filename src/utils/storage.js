@@ -11,6 +11,7 @@ const HABITS_KEY = '@pixelhabit_habits';
  *   type: "positive" | "negative",
  *   createdAt: string,   // ISO 8601 date
  *   checkIns: string[],  // array of ISO date strings ("2026-02-15")
+ *   reminderTime: string | null, // "HH:MM" or null if no reminder
  * }
  */
 

@@ -7,12 +7,19 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  Platform,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { getHabits, saveHabits } from '../utils/storage';
 import { generateId } from '../utils/habits';
 import { usePro } from '../contexts/ProContext';
+import {
+  scheduleDailyReminder,
+  cancelReminder,
+  parseTimeString,
+  formatTime,
+} from '../utils/notifications';
 
 const PRESET_COLORS = [
   '#6C63FF',
@@ -27,6 +34,13 @@ const PRESET_COLORS = [
   '#778CA3',
 ];
 
+const QUICK_TIMES = [
+  { label: 'Morning', hour: 8, minute: 0 },
+  { label: 'Noon', hour: 12, minute: 0 },
+  { label: 'Evening', hour: 18, minute: 0 },
+  { label: 'Night', hour: 21, minute: 0 },
+];
+
 export default function AddEditHabitScreen({ navigation, route }) {
   const { colors, dark } = useTheme();
   const { canAddHabit } = usePro();
@@ -37,6 +51,25 @@ export default function AddEditHabitScreen({ navigation, route }) {
   const [selectedColor, setSelectedColor] = useState(existing?.color ?? PRESET_COLORS[0]);
   const [type, setType] = useState(existing?.type ?? 'positive');
   const [saving, setSaving] = useState(false);
+
+  // Reminder state
+  const existingTime = existing?.reminderTime ? parseTimeString(existing.reminderTime) : null;
+  const [reminderEnabled, setReminderEnabled] = useState(!!existingTime);
+  const [reminderHour, setReminderHour] = useState(existingTime?.hour ?? 8);
+  const [reminderMinute, setReminderMinute] = useState(existingTime?.minute ?? 0);
+
+  function adjustTime(field, delta) {
+    if (field === 'hour') {
+      setReminderHour((h) => (h + delta + 24) % 24);
+    } else {
+      setReminderMinute((m) => {
+        const next = m + delta;
+        if (next >= 60) { setReminderHour((h) => (h + 1) % 24); return 0; }
+        if (next < 0) { setReminderHour((h) => (h - 1 + 24) % 24); return 55; }
+        return next;
+      });
+    }
+  }
 
   async function handleSave() {
     const trimmed = name.trim();
@@ -54,20 +87,33 @@ export default function AddEditHabitScreen({ navigation, route }) {
       return;
     }
 
+    const reminderTime = reminderEnabled ? formatTime(reminderHour, reminderMinute) : null;
+    let habitId;
+
     if (isEdit) {
+      habitId = existing.id;
       const idx = habits.findIndex((h) => h.id === existing.id);
       if (idx !== -1) {
-        habits[idx] = { ...habits[idx], name: trimmed, color: selectedColor, type };
+        habits[idx] = { ...habits[idx], name: trimmed, color: selectedColor, type, reminderTime };
       }
     } else {
+      habitId = generateId();
       habits.push({
-        id: generateId(),
+        id: habitId,
         name: trimmed,
         color: selectedColor,
         type,
         createdAt: new Date().toISOString(),
         checkIns: [],
+        reminderTime,
       });
+    }
+
+    // Schedule or cancel the notification
+    if (reminderTime) {
+      await scheduleDailyReminder(habitId, trimmed, reminderHour, reminderMinute);
+    } else {
+      await cancelReminder(habitId);
     }
 
     await saveHabits(habits);
@@ -84,6 +130,7 @@ export default function AddEditHabitScreen({ navigation, route }) {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            await cancelReminder(existing.id);
             const habits = await getHabits();
             const filtered = habits.filter((h) => h.id !== existing.id);
             await saveHabits(filtered);
@@ -213,6 +260,103 @@ export default function AddEditHabitScreen({ navigation, route }) {
             );
           })}
         </View>
+
+        {/* Reminder */}
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Daily Reminder</Text>
+
+        {/* Toggle */}
+        <TouchableOpacity
+          onPress={() => setReminderEnabled((v) => !v)}
+          style={[
+            styles.reminderToggle,
+            {
+              backgroundColor: colors.card,
+              borderColor: reminderEnabled ? selectedColor : colors.border,
+            },
+          ]}
+        >
+          <Ionicons
+            name={reminderEnabled ? 'notifications' : 'notifications-off-outline'}
+            size={20}
+            color={reminderEnabled ? selectedColor : colors.textSecondary}
+          />
+          <Text style={[styles.reminderToggleText, { color: colors.text }]}>
+            {reminderEnabled ? 'Reminder on' : 'No reminder'}
+          </Text>
+          <View
+            style={[
+              styles.toggleTrack,
+              { backgroundColor: reminderEnabled ? selectedColor : dark ? '#555' : '#CCC' },
+            ]}
+          >
+            <View
+              style={[
+                styles.toggleThumb,
+                { transform: [{ translateX: reminderEnabled ? 18 : 0 }] },
+              ]}
+            />
+          </View>
+        </TouchableOpacity>
+
+        {/* Time picker (visible when enabled) */}
+        {reminderEnabled && (
+          <View style={styles.timeSection}>
+            {/* Quick presets */}
+            <View style={styles.quickTimes}>
+              {QUICK_TIMES.map((qt) => {
+                const active = reminderHour === qt.hour && reminderMinute === qt.minute;
+                return (
+                  <TouchableOpacity
+                    key={qt.label}
+                    onPress={() => { setReminderHour(qt.hour); setReminderMinute(qt.minute); }}
+                    style={[
+                      styles.quickChip,
+                      {
+                        backgroundColor: active ? selectedColor : colors.card,
+                        borderColor: active ? selectedColor : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: active ? '#FFF' : colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                      {qt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Scroll-style time picker */}
+            <View style={[styles.timePicker, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              {/* Hour */}
+              <View style={styles.timeColumn}>
+                <TouchableOpacity onPress={() => adjustTime('hour', 1)} style={styles.timeArrow}>
+                  <Ionicons name="chevron-up" size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <Text style={[styles.timeDigit, { color: colors.text }]}>
+                  {String(reminderHour).padStart(2, '0')}
+                </Text>
+                <TouchableOpacity onPress={() => adjustTime('hour', -1)} style={styles.timeArrow}>
+                  <Ionicons name="chevron-down" size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.timeSeparator, { color: colors.text }]}>:</Text>
+
+              {/* Minute */}
+              <View style={styles.timeColumn}>
+                <TouchableOpacity onPress={() => adjustTime('minute', 5)} style={styles.timeArrow}>
+                  <Ionicons name="chevron-up" size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <Text style={[styles.timeDigit, { color: colors.text }]}>
+                  {String(reminderMinute).padStart(2, '0')}
+                </Text>
+                <TouchableOpacity onPress={() => adjustTime('minute', -5)} style={styles.timeArrow}>
+                  <Ionicons name="chevron-down" size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Save button */}
         <TouchableOpacity
@@ -344,7 +488,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   colorOption: {
     width: 48,
@@ -360,6 +504,81 @@ const styles = StyleSheet.create({
   },
   colorCheck: {
     position: 'absolute',
+  },
+
+  // Reminder toggle
+  reminderToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 10,
+  },
+  reminderToggleText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  toggleTrack: {
+    width: 42,
+    height: 24,
+    borderRadius: 12,
+    padding: 3,
+  },
+  toggleThumb: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FFFFFF',
+  },
+
+  // Time section
+  timeSection: {
+    marginBottom: 28,
+    gap: 12,
+  },
+  quickTimes: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  quickChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+
+  // Time picker
+  timePicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 24,
+    gap: 4,
+  },
+  timeColumn: {
+    alignItems: 'center',
+    width: 56,
+  },
+  timeArrow: {
+    padding: 6,
+  },
+  timeDigit: {
+    fontSize: 36,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  timeSeparator: {
+    fontSize: 36,
+    fontWeight: '700',
+    marginBottom: 2,
   },
 
   // Save
