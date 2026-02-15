@@ -7,25 +7,23 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { useTheme, useFocusEffect } from '@react-navigation/native';
+import { useTheme, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import { getHabits, addCheckIn, removeCheckIn, saveHabits } from '../utils/storage';
+import { getHabits, addCheckIn, removeCheckIn } from '../utils/storage';
 import {
   getCurrentStreak,
   getTotalActiveDays,
   getAllCheckIns,
   isCheckedToday,
-  generateId,
 } from '../utils/habits';
 import HeatmapGrid from '../components/HeatmapGrid';
-import AddHabitModal from '../components/AddHabitModal';
 
 export default function HomeScreen() {
   const { colors, dark } = useTheme();
+  const navigation = useNavigation();
   const [habits, setHabits] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
   const [selectedHabitId, setSelectedHabitId] = useState(null); // null = global view
 
   // Reload habits every time the screen is focused
@@ -52,21 +50,6 @@ export default function HomeScreen() {
       ? await removeCheckIn(habit.id, today)
       : await addCheckIn(habit.id, today);
     setHabits(updated);
-  }
-
-  async function handleAddHabit({ name, color, type }) {
-    const newHabit = {
-      id: generateId(),
-      name,
-      color,
-      type,
-      createdAt: new Date().toISOString(),
-      checkIns: [],
-    };
-    const updated = [...habits, newHabit];
-    await saveHabits(updated);
-    setHabits(updated);
-    setModalVisible(false);
   }
 
   // --- Derived data ---
@@ -108,7 +91,7 @@ export default function HomeScreen() {
                 PixelHabit
               </Text>
               <TouchableOpacity
-                onPress={() => setModalVisible(true)}
+                onPress={() => navigation.navigate('AddEditHabit')}
                 style={[styles.addButton, { backgroundColor: colors.primary }]}
               >
                 <Ionicons name="add" size={24} color="#FFFFFF" />
@@ -182,6 +165,7 @@ export default function HomeScreen() {
             colors={colors}
             dark={dark}
             onToggle={() => handleToggleCheckIn(item)}
+            onEdit={() => navigation.navigate('AddEditHabit', { habit: item })}
           />
         )}
         ListEmptyComponent={
@@ -198,11 +182,6 @@ export default function HomeScreen() {
         }
       />
 
-      <AddHabitModal
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-        onAdd={handleAddHabit}
-      />
     </View>
   );
 }
@@ -246,12 +225,14 @@ function FilterChip({ label, active, color, colors, onPress }) {
   );
 }
 
-function HabitRow({ habit, colors, dark, onToggle }) {
+function HabitRow({ habit, colors, dark, onToggle, onEdit }) {
   const checked = isCheckedToday(habit.checkIns);
   const streak = getCurrentStreak(habit.checkIns);
 
   return (
-    <View
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onLongPress={onEdit}
       style={[
         styles.habitRow,
         { backgroundColor: colors.card, borderColor: colors.border },
@@ -281,6 +262,11 @@ function HabitRow({ habit, colors, dark, onToggle }) {
         </View>
       </View>
 
+      {/* Edit button */}
+      <TouchableOpacity onPress={onEdit} style={styles.editBtn}>
+        <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
+      </TouchableOpacity>
+
       {/* Check-in button */}
       <TouchableOpacity onPress={onToggle} style={styles.checkBtn}>
         <View
@@ -299,7 +285,7 @@ function HabitRow({ habit, colors, dark, onToggle }) {
           {checked && <Ionicons name="checkmark" size={20} color="#FFFFFF" />}
         </View>
       </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -420,9 +406,15 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
+  // Edit button
+  editBtn: {
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+  },
+
   // Check-in button
   checkBtn: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 14,
   },
   checkCircle: {
