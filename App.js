@@ -15,8 +15,14 @@ export default function App() {
   const theme = colorScheme === 'dark' ? DarkTheme : LightTheme;
 
   useEffect(() => {
-    setupNotificationChannel();
-    requestNotificationPermissions();
+    (async () => {
+      try {
+        await setupNotificationChannel();
+        await requestNotificationPermissions();
+      } catch (e) {
+        console.warn('Notification setup failed:', e);
+      }
+    })();
   }, []);
 
   return (

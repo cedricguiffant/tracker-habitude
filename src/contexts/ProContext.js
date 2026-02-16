@@ -17,9 +17,11 @@ export function ProProvider({ children }) {
   const [isPro, setIsProState] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(PRO_KEY).then((val) => {
-      if (val === 'true') setIsProState(true);
-    });
+    AsyncStorage.getItem(PRO_KEY)
+      .then((val) => {
+        if (val === 'true') setIsProState(true);
+      })
+      .catch((e) => console.warn('AsyncStorage read error:', e));
   }, []);
 
   const setIsPro = useCallback(async (value) => {

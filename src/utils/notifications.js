@@ -16,29 +16,37 @@ Notifications.setNotificationHandler({
  * Returns true if granted.
  */
 export async function requestNotificationPermissions() {
-  if (!Device.isDevice) {
-    // Notifications don't work on simulators/emulators
+  try {
+    if (!Device.isDevice) {
+      return false;
+    }
+
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    if (existing === 'granted') return true;
+
+    const { status } = await Notifications.requestPermissionsAsync();
+    return status === 'granted';
+  } catch (e) {
+    console.warn('requestNotificationPermissions error:', e);
     return false;
   }
-
-  const { status: existing } = await Notifications.getPermissionsAsync();
-  if (existing === 'granted') return true;
-
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status === 'granted';
 }
 
 /**
  * Set up the Android notification channel (required for Android 8+).
  */
 export async function setupNotificationChannel() {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('habit-reminders', {
-      name: 'Habit Reminders',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      sound: 'default',
-    });
+  try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('habit-reminders', {
+        name: 'Habit Reminders',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        sound: 'default',
+      });
+    }
+  } catch (e) {
+    console.warn('setupNotificationChannel error:', e);
   }
 }
 
